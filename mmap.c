@@ -122,6 +122,7 @@ static void
 mm_free(i_mm)
     mm_ipc *i_mm;
 {
+    int shm_detached = 0;
 #if HAVE_SEMCTL && HAVE_SHMCTL
     if (i_mm->t->flag & MM_IPC) {
 	struct shmid_ds buf;
@@ -136,9 +137,7 @@ mm_free(i_mm)
 	    }
 	}
 	shmdt(i_mm->t);
-    }
-    else {
-	free(i_mm->t);
+        shm_detached = 1;
     }
 #endif
     if (i_mm->t->path) {
@@ -146,13 +145,17 @@ mm_free(i_mm)
 	if (i_mm->t->path != (char *)-1) {
 	    if (i_mm->t->real < i_mm->t->len && i_mm->t->vscope != MAP_PRIVATE &&
 		truncate(i_mm->t->path, i_mm->t->real) == -1) {
-		free(i_mm->t->path);
+                if (!shm_detached) {
+                    free(i_mm->t->path);
+                    free(i_mm->t);
+                }
 		free(i_mm);
 		rb_raise(rb_eTypeError, "truncate");
 	    }
 	    free(i_mm->t->path);
 	}
     }
+    if (!shm_detached) free(i_mm->t);
     free(i_mm);
 }
 
@@ -893,6 +896,7 @@ mm_mprotect(obj, a)
 	    pmode = PROT_READ | PROT_WRITE;
 	else {
 	    rb_raise(rb_eArgError, "Invalid mode %s", smode);
+            pmode = PROT_READ;    /* makes compiler happy on Solaris */
 	}
     }
     else {
@@ -2043,6 +2047,7 @@ mm_undefined(argc, argv, obj)
     VALUE *argv, obj;
 {
     rb_raise(rb_eNameError, "not yet implemented");
+    return Qnil;
 }
 
 static VALUE
